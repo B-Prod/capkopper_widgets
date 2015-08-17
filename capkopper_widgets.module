@@ -1,0 +1,137 @@
+<?php
+/**
+ * @file
+ * Code for the capKopper Widgets feature.
+ */
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function capkopper_widgets_module_implements_alter(&$implementations, $hook) {
+  if ($hook == 'form_alter' || $hook == 'module_implements_alter') {
+    // We need our form_alter hook to be run after the one of Panopoly Magic
+    // module. Moreover, because this last module also moves its position
+    // for this hook, we have to also run the module_implements_alter hook
+    // at the very end.
+    $group = $implementations['capkopper_widgets'];
+    unset($implementations['capkopper_widgets']);
+    $implementations['capkopper_widgets'] = $group;
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function capkopper_widgets_form_alter(&$form, &$form_state, $form_id) {
+  // Panopoly widgets simplifies the menu block edit form, which id not a very
+  // good thing since this denies access to the menu block depth...
+  if ($form_id == 'menu_block_menu_tree_content_type_edit_form') {
+    // Take care that the Panopoly Magic module moves the 'depth' element to the
+    // 'general_settings' container.
+    if (isset($form['general_settings']['depth']['#access'])) {
+      unset($form['general_settings']['depth']['#access']);
+    }
+    // Just in case the General settings wrapper were removed...
+    elseif (isset($form['depth']['#access'])) {
+      unset($form['depth']['#access']);
+    }
+  }
+}
+
+/**
+ * Implements hook_field_formatter_info_alter().
+ */
+function capkopper_widgets_field_formatter_info_alter(&$info) {
+  // Try to clarify the formatter name, since the word "picture" is commonly
+  // translated to the same word than "image" in several languges (e.g French).
+  if (isset($info['picture'])) {
+    $info['picture']['label'] = t('Picture', array(), array('context' => 'Picture module'));
+
+    // And why not add a description?
+    $info['picture']['description'] = t('Format the file as an adaptative image based on device capabilities, using breakpoints.');
+  }
+}
+
+/**
+ * Implements hook_file_formatter_info_alter().
+ */
+function capkopper_widgets_file_formatter_info_alter(&$info) {
+  // Remove the compatibility formatter that is provided by the Picture module.
+  // This reduces the confusion in the formatter names.
+  if (!empty($info['file_picture'])) {
+    unset($info['file_picture']);
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function capkopper_widgets_cron() {
+  // Clean up the {panelizer_entity} table, so the changes on a panelizer default
+  // can be applied on all non-overriden entites.
+  db_query('DELETE FROM {panelizer_entity} WHERE name IS NOT NULL');
+}
+
+/**
+ * Implements hook_preprocess_pane_messages().
+ *
+ * @see template_preprocess_pane_messages()
+ */
+function capkopper_widgets_preprocess_pane_messages(&$variables) {
+  // Remove the $tabs array if empty. Actually, even if there are no tabs, the
+  // menu_local_tabs() function returns a non-empty array, which makes the
+  // usual empty() test fail.
+  if (empty($variables['tabs']['#primary']) && empty($variables['tabs']['#secondary'])) {
+    $variables['tabs'] = array();
+  }
+}
+
+/**
+ * Implements hook_preprocess_panels_pane().
+ *
+ * @see template_preprocess_panels_pane()
+ */
+function capkopper_widgets_preprocess_panels_pane(&$variables) {
+  $pane = $variables['pane'];
+
+  if ($pane->type === 'fieldable_panels_pane') {
+    if (!empty($pane->configuration['view_mode'])) {
+      $variables['classes_array'][] = 'pane-view-mode-' . ctools_cleanstring($pane->configuration['view_mode'], array('lower case' => TRUE));
+    }
+  }
+
+  // Add classes to the main content panes, when applicable.
+  // Note that it only works for entities that uses panelizer for full display.
+  static $content_panes;
+
+  if (isset($variables['display']->renderer_handler->address)) {
+    list($module) = explode('::', $variables['display']->renderer_handler->address, 2);
+
+    if ($module === 'page_manager') {
+      if (!isset($content_panes)) {
+        $content_panes = capkopper_widgets_order_panes($variables['display']->renderer_handler);
+      }
+
+      if (FALSE !== $count = array_search($pane->pid, $content_panes)) {
+        $variables['classes_array'][] = 'pane-staggered';
+        $variables['classes_array'][] = 'pane-count-' . $count;
+        $variables['classes_array'][] = 'pane-zebra-' . ($count % 2 ? 'odd' : 'even');
+      }
+    }
+  }
+}
+
+/**
+ * Orders the panes to have a correct counter.
+ */
+function capkopper_widgets_order_panes(\panels_renderer_standard $renderer) {
+  $panes = array();
+
+  foreach ($renderer->prepared['regions'] as $region) {
+    foreach ($region['pids'] as $pane_id) {
+      $panes[] = $pane_id;
+    }
+  }
+
+  return $panes;
+}

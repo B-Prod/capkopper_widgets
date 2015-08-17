@@ -1,0 +1,7 @@
+name = capKopper Widgets
+description = Improve some features of Panopoly Widgets module.
+core = 7.x
+package = capKopper
+version = 7.x-1.0
+project = capkopper_widgets
+dependencies[] = panopoly_widgets
